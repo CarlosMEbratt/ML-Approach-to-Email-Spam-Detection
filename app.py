@@ -15,6 +15,7 @@ from io import BytesIO
 nltk.download('punkt')
 nltk.download('stopwords')
 nltk.download('wordnet')
+nltk.download('punkt_tab')
 
 GITHUB_MODEL_URL = "https://raw.githubusercontent.com/CarlosMEbratt/ML-Approach-to-Email-Spam-Detection/main/rf_model.pkl"
 GITHUB_VECTOR_TFIDF_URL = "https://raw.githubusercontent.com/CarlosMEbratt/ML-Approach-to-Email-Spam-Detection/main/vectorizer_tfidf.pkl"
