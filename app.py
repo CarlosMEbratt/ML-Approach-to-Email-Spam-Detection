@@ -103,18 +103,20 @@ st.sidebar.write("""
 4. Enter a message in the text area to classify it as Spam or Ham.
 """)
 
-st.title("Spam/Ham Message Classifier")
+st.title("Spam/Ham Email Message Classifier")
 
 model, vectorizer_tfidf, vectorizer_bigrams, vectorizer_trigrams = load_model()
 
 if model and vectorizer_tfidf and vectorizer_bigrams and vectorizer_trigrams:
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
+    col1, col2, col3 = st.columns([0.5, 3, 0.5])  # Adjust the column widths for more space
+
     with col2:
-        input_text = st.text_area("Enter the message to classify:")
+        input_text = st.text_area("Enter the message to classify:", height=200)  # Increase the height of the text area
         if st.button("Classify"):
             if input_text:
                 result = predict_message(model, input_text, vectorizer_tfidf, vectorizer_bigrams, vectorizer_trigrams)
-                st.write(f"The message is classified as: {result}")
+                st.markdown(f"<h3 style='text-align: center;'>The message is classified as: {result}</h3>", unsafe_allow_html=True)  # Increase the size of the output text
             else:
                 st.write("Please enter a message to classify.")
+
+
