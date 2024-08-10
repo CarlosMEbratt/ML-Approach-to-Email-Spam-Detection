@@ -34,10 +34,10 @@ def load_model():
     option = st.sidebar.selectbox("Choose model source", ["Upload model file", "Load from GitHub"])
     
     if option == "Upload model file":
-        uploaded_model = st.sidebar.file_uploader("Choose a model file", type="pkl")
-        uploaded_vector_tfidf = st.sidebar.file_uploader("Choose a TF-IDF vectorizer file", type="pkl")
-        uploaded_vector_bigrams = st.sidebar.file_uploader("Choose a Bigrams vectorizer file", type="pkl")
-        uploaded_vector_trigrams = st.sidebar.file_uploader("Choose a Trigrams vectorizer file", type="pkl")
+        uploaded_model = st.file_uploader("Choose a model file", type="pkl")
+        uploaded_vector_tfidf = st.file_uploader("Choose a TF-IDF vectorizer file", type="pkl")
+        uploaded_vector_bigrams = st.file_uploader("Choose a Bigrams vectorizer file", type="pkl")
+        uploaded_vector_trigrams = st.file_uploader("Choose a Trigrams vectorizer file", type="pkl")
         
         if uploaded_model is not None and uploaded_vector_tfidf is not None and uploaded_vector_bigrams is not None and uploaded_vector_trigrams is not None:
             model = pickle.load(uploaded_model)
@@ -51,7 +51,7 @@ def load_model():
         vectorizer_trigrams = load_from_url(GITHUB_VECTOR_TRIGRAMS_URL)
     
     if model is None or vectorizer_tfidf is None or vectorizer_bigrams is None or vectorizer_trigrams is None:
-        st.warning("Model or vectorizers not loaded. Please upload files or choose to load from GitHub.")
+        st.sidebar.warning("Model or vectorizers not loaded. Please upload files or choose to load from GitHub.")
     
     return model, vectorizer_tfidf, vectorizer_bigrams, vectorizer_trigrams
 
@@ -94,15 +94,26 @@ def predict_message(model, message, vectorizer_tfidf, vectorizer_bigrams, vector
     return 'Spam' if prediction[0] == 1 else 'Ham'
 
 # Streamlit app layout
+st.sidebar.title("Instructions")
+st.sidebar.write("""
+1. Choose the model source from the dropdown.
+2. **Upload model file**: Upload the trained model and vectorizers files.
+3. **Load from GitHub**: Automatically load the model and vectorizers from the provided GitHub links.
+4. Enter a message in the text area to classify it as Spam or Ham.
+""")
+
 st.title("Spam/Ham Message Classifier")
 
 model, vectorizer_tfidf, vectorizer_bigrams, vectorizer_trigrams = load_model()
 
 if model and vectorizer_tfidf and vectorizer_bigrams and vectorizer_trigrams:
-    input_text = st.text_area("Enter the message to classify:")
-    if st.button("Classify"):
-        if input_text:
-            result = predict_message(model, input_text, vectorizer_tfidf, vectorizer_bigrams, vectorizer_trigrams)
-            st.write(f"The message is classified as: {result}")
-        else:
-            st.write("Please enter a message to classify.")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        input_text = st.text_area("Enter the message to classify:")
+        if st.button("Classify"):
+            if input_text:
+                result = predict_message(model, input_text, vectorizer_tfidf, vectorizer_bigrams, vectorizer_trigrams)
+                st.write(f"The message is classified as: {result}")
+            else:
+                st.write("Please enter a message to classify.")
