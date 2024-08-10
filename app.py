@@ -1,67 +1,108 @@
 import streamlit as st
+import pickle
+import string
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from nltk.util import ngrams
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from scipy.sparse import hstack
 import requests
-import joblib
-import os
-import tempfile
-from sklearn.feature_extraction.text import TfidfVectorizer
+from io import BytesIO
 
-# Predefined GitHub URL for the model file
-GITHUB_MODEL_URL = "https://raw.githubusercontent.com/CarlosMEbratt/ML-Approach-to-Email-Spam-Detection/main/rf_model.pkl"  # Replace with your actual GitHub URL
+# NLTK Resources
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('wordnet')
 
-# Function to load a model from a GitHub repository
-def load_model_from_github(url):
+GITHUB_MODEL_URL = "https://raw.githubusercontent.com/CarlosMEbratt/ML-Approach-to-Email-Spam-Detection/main/rf_model.pkl"
+GITHUB_VECTOR_TFIDF_URL = "https://raw.githubusercontent.com/CarlosMEbratt/ML-Approach-to-Email-Spam-Detection/main/vectorizer_tfidf.pkl"
+GITHUB_VECTOR_BIGRAMS_URL = "https://raw.githubusercontent.com/CarlosMEbratt/ML-Approach-to-Email-Spam-Detection/main/vectorizer_bigrams.pkl"
+GITHUB_VECTOR_TRIGRAMS_URL = "https://raw.githubusercontent.com/CarlosMEbratt/ML-Approach-to-Email-Spam-Detection/main/vectorizer_trigrams.pkl"
+
+def load_from_url(url):
     response = requests.get(url)
-    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-        tmp_file.write(response.content)
-        model = joblib.load(tmp_file.name)
-    return model
+    return pickle.load(BytesIO(response.content))
 
-# Function to load a model from an uploaded file
-def load_model_from_upload(uploaded_file):
-    return joblib.load(uploaded_file)
+def load_model():
+    model = None
+    vectorizer_tfidf = None
+    vectorizer_bigrams = None
+    vectorizer_trigrams = None
+    
+    option = st.sidebar.selectbox("Choose model source", ["Upload model file", "Load from GitHub"])
+    
+    if option == "Upload model file":
+        uploaded_model = st.sidebar.file_uploader("Choose a model file", type="pkl")
+        uploaded_vector_tfidf = st.sidebar.file_uploader("Choose a TF-IDF vectorizer file", type="pkl")
+        uploaded_vector_bigrams = st.sidebar.file_uploader("Choose a Bigrams vectorizer file", type="pkl")
+        uploaded_vector_trigrams = st.sidebar.file_uploader("Choose a Trigrams vectorizer file", type="pkl")
+        
+        if uploaded_model is not None and uploaded_vector_tfidf is not None and uploaded_vector_bigrams is not None and uploaded_vector_trigrams is not None:
+            model = pickle.load(uploaded_model)
+            vectorizer_tfidf = pickle.load(uploaded_vector_tfidf)
+            vectorizer_bigrams = pickle.load(uploaded_vector_bigrams)
+            vectorizer_trigrams = pickle.load(uploaded_vector_trigrams)
+    elif option == "Load from GitHub":
+        model = load_from_url(GITHUB_MODEL_URL)
+        vectorizer_tfidf = load_from_url(GITHUB_VECTOR_TFIDF_URL)
+        vectorizer_bigrams = load_from_url(GITHUB_VECTOR_BIGRAMS_URL)
+        vectorizer_trigrams = load_from_url(GITHUB_VECTOR_TRIGRAMS_URL)
+    
+    if model is None or vectorizer_tfidf is None or vectorizer_bigrams is None or vectorizer_trigrams is None:
+        st.warning("Model or vectorizers not loaded. Please upload files or choose to load from GitHub.")
+    
+    return model, vectorizer_tfidf, vectorizer_bigrams, vectorizer_trigrams
 
-# Function to predict spam or ham
-def predict_message(model, text):
-    vectorizer = TfidfVectorizer(stop_words='english')
-    X = vectorizer.fit_transform([text])
-    prediction = model.predict(X)
-    return "Spam" if prediction == 1 else "Ham"
+def preprocess_text(text):
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    tokens = word_tokenize(text.lower())
+    stop_words = set(stopwords.words('english'))
+    tokens = [t for t in tokens if t not in stop_words]
+    lemmatizer = WordNetLemmatizer()
+    tokens = [lemmatizer.lemmatize(t) for t in tokens]
+    return tokens
 
-# Streamlit app
-st.title("Spam/Ham Classifier")
+def extract_ngrams(tokens, n):
+    return list(ngrams(tokens, n))
 
-# Option to select the model source
-model_option = st.radio(
-    "Choose a model source:",
-    ("Load from GitHub", "Upload your own model")
-)
+def custom_preprocessor(text):
+    return ' '.join(['_'.join(bigram) for bigram in text])
 
-model = None
+def vectorize_text(tokens, vectorizer_tfidf, vectorizer_bigrams, vectorizer_trigrams):
+    if not tokens:
+        raise ValueError("Preprocessed text is empty after tokenization and stopword removal.")
 
-# Load the model based on user selection
-if model_option == "Load from GitHub":
-    if st.button("Load Model"):
-        try:
-            model = load_model_from_github(GITHUB_MODEL_URL)
-            st.success("Model loaded successfully from GitHub!")
-        except Exception as e:
-            st.error(f"Failed to load model: {e}")
-elif model_option == "Upload your own model":
-    uploaded_file = st.file_uploader("Upload your model file (.pkl):", type=["pkl"])
-    if uploaded_file:
-        try:
-            model = load_model_from_upload(uploaded_file)
-            st.success("Model uploaded and loaded successfully!")
-        except Exception as e:
-            st.error(f"Failed to load model: {e}")
+    X_tfidf = vectorizer_tfidf.transform([' '.join(tokens)])
+    
+    bigrams = extract_ngrams(tokens, 2)
+    trigrams = extract_ngrams(tokens, 3)
+    
+    X_bigrams = vectorizer_bigrams.transform([custom_preprocessor(bigrams)])
+    X_trigrams = vectorizer_trigrams.transform([custom_preprocessor(trigrams)])
+    
+    X_combined = hstack((X_tfidf, X_bigrams, X_trigrams))
+    return X_combined
 
-# Field to enter text for prediction
-text_input = st.text_area("Enter the text message for classification:")
+def predict_message(model, message, vectorizer_tfidf, vectorizer_bigrams, vectorizer_trigrams):
+    tokens = preprocess_text(message)
+    if not tokens:
+        return 'Unable to classify: input text is too short or contains only stopwords.'
+    X_combined = vectorize_text(tokens, vectorizer_tfidf, vectorizer_bigrams, vectorizer_trigrams)
+    prediction = model.predict(X_combined)
+    return 'Spam' if prediction[0] == 1 else 'Ham'
 
-# Predict button
-if st.button("Predict"):
-    if model is not None and text_input.strip() != "":
-        result = predict_message(model, text_input)
-        st.write(f"The message is classified as: **{result}**")
-    else:
-        st.error("Please load a model and enter a message for classification.")
+# Streamlit app layout
+st.title("Spam/Ham Message Classifier")
+
+model, vectorizer_tfidf, vectorizer_bigrams, vectorizer_trigrams = load_model()
+
+if model and vectorizer_tfidf and vectorizer_bigrams and vectorizer_trigrams:
+    input_text = st.text_area("Enter the message to classify:")
+    if st.button("Classify"):
+        if input_text:
+            result = predict_message(model, input_text, vectorizer_tfidf, vectorizer_bigrams, vectorizer_trigrams)
+            st.write(f"The message is classified as: {result}")
+        else:
+            st.write("Please enter a message to classify.")
